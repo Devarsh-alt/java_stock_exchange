@@ -52,8 +52,8 @@ public class ExchangeServer {
         context.addFilter(ApiAuthFilter.class, "/api/v1/*", null);
 
         // Health / readiness — exempt from auth in ApiAuthFilter
-        context.addServlet(new ServletHolder(new HealthServlet()), "/api/v1/health");
-        context.addServlet(new ServletHolder(new HealthServlet()), "/api/v1/ready");
+        context.addServlet(new ServletHolder(new HealthServlet(exchangeService)), "/api/v1/health");
+        context.addServlet(new ServletHolder(new HealthServlet(exchangeService)), "/api/v1/ready");
 
         // Core trading endpoints
         context.addServlet(new ServletHolder(new OrderServlet(exchangeService)),    "/api/v1/orders/*");

@@ -44,7 +44,11 @@ public class SimulatedTraderService {
             long ordersSubmitted,
             long tradesExecuted,
             long executedVolume,
-            long errorsCount
+            long errorsCount,
+            double ordersPerSecond,
+            double latencyP50Micros,
+            double latencyP95Micros,
+            double latencyP99Micros
     ) {}
 
     private final ExchangeService exchangeService;
@@ -55,6 +59,9 @@ public class SimulatedTraderService {
     private final AtomicLong tradesExecuted = new AtomicLong(0);
     private final AtomicLong executedVolume = new AtomicLong(0);
     private final AtomicLong errorsCount = new AtomicLong(0);
+    private final java.util.concurrent.ConcurrentLinkedQueue<Long> latenciesMicros = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private static final int MAX_LATENCY_SAMPLES = 10_000;
+    private volatile long startTimeMs = System.currentTimeMillis();
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
@@ -128,7 +135,15 @@ public class SimulatedTraderService {
             String clientOrderId = "sim-" + UUID.randomUUID();
             ordersSubmitted.incrementAndGet();
 
+            long t0 = System.nanoTime();
             List<Trade> trades = exchangeService.submitOrder(clientOrderId, userId, symbol, side, OrderType.LIMIT, price, qty);
+            long elapsedMicros = (System.nanoTime() - t0) / 1000L;
+
+            latenciesMicros.add(elapsedMicros);
+            while (latenciesMicros.size() > MAX_LATENCY_SAMPLES) {
+                latenciesMicros.poll();
+            }
+
             if (!trades.isEmpty()) {
                 tradesExecuted.addAndGet(trades.size());
                 long vol = trades.stream().mapToLong(Trade::getQuantity).sum();
@@ -140,11 +155,29 @@ public class SimulatedTraderService {
     }
 
     public SimulationMetrics getMetrics() {
+        long submitted = ordersSubmitted.get();
+        long elapsedSec = Math.max(1, (System.currentTimeMillis() - startTimeMs) / 1000);
+        double ops = (double) submitted / (double) elapsedSec;
+
+        List<Long> samples = new java.util.ArrayList<>(latenciesMicros);
+        java.util.Collections.sort(samples);
+
+        double p50 = 0.0, p95 = 0.0, p99 = 0.0;
+        if (!samples.isEmpty()) {
+            p50 = samples.get((int) (samples.size() * 0.50));
+            p95 = samples.get((int) (samples.size() * 0.95));
+            p99 = samples.get((int) (samples.size() * 0.99));
+        }
+
         return new SimulationMetrics(
-                ordersSubmitted.get(),
+                submitted,
                 tradesExecuted.get(),
                 executedVolume.get(),
-                errorsCount.get()
+                errorsCount.get(),
+                Math.round(ops * 100.0) / 100.0,
+                p50,
+                p95,
+                p99
         );
     }
 

@@ -66,10 +66,14 @@ public class SimulatorServlet extends HttpServlet {
             case "/metrics" -> {
                 SimulatedTraderService.SimulationMetrics m = sim.getMetrics();
                 JsonUtil.writeOk(resp, "{" +
-                        "\"ordersSubmitted\":" + m.ordersSubmitted() + "," +
-                        "\"tradesExecuted\":"  + m.tradesExecuted()  + "," +
-                        "\"executedVolume\":"  + m.executedVolume()  + "," +
-                        "\"errorsCount\":"     + m.errorsCount()     + "}");
+                        "\"ordersSubmitted\":"   + m.ordersSubmitted()   + "," +
+                        "\"tradesExecuted\":"    + m.tradesExecuted()    + "," +
+                        "\"executedVolume\":"    + m.executedVolume()    + "," +
+                        "\"errorsCount\":"       + m.errorsCount()       + "," +
+                        "\"ordersPerSecond\":"   + m.ordersPerSecond()   + "," +
+                        "\"latencyP50Micros\":"  + m.latencyP50Micros()  + "," +
+                        "\"latencyP95Micros\":"  + m.latencyP95Micros()  + "," +
+                        "\"latencyP99Micros\":"  + m.latencyP99Micros()  + "}");
             }
             case "/status" -> {
                 JsonUtil.writeOk(resp, "{" +

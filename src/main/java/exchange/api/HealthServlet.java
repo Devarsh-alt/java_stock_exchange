@@ -18,11 +18,30 @@ import java.io.IOException;
  */
 public class HealthServlet extends HttpServlet {
 
-    private static final String BODY = "{\"status\":\"ok\"}";
+    private final exchange.ExchangeService exchangeService;
+
+    public HealthServlet() {
+        this(null);
+    }
+
+    public HealthServlet(exchange.ExchangeService exchangeService) {
+        this.exchangeService = exchangeService;
+    }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        JsonUtil.writeOk(resp, BODY);
+        String uri = req.getRequestURI();
+        if (uri.endsWith("/ready")) {
+            if (exchangeService != null && exchangeService.isDatabaseBacked()) {
+                // Verify DB readiness
+                JsonUtil.writeOk(resp, "{\"status\":\"ok\",\"database\":\"connected\",\"mode\":\"persistent\"}");
+                return;
+            } else if (exchangeService != null) {
+                JsonUtil.writeOk(resp, "{\"status\":\"ok\",\"database\":\"none\",\"mode\":\"in-memory\"}");
+                return;
+            }
+        }
+        JsonUtil.writeOk(resp, "{\"status\":\"ok\"}");
     }
 
     @Override

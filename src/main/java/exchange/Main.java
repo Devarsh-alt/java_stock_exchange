@@ -33,51 +33,54 @@ public class Main {
 
         // 1. Try to initialize Database components if environment is configured
         String dbUrl = System.getenv("DB_URL");
+        boolean inMemoryAllowed = "true".equalsIgnoreCase(System.getenv("IN_MEMORY_ALLOWED"));
+
         if (dbUrl != null && !dbUrl.isBlank()) {
-            try {
-                System.out.println("[Main] DB_URL detected. Configuring MySQL persistence...");
-                DatabaseConfig dbConfig = DatabaseConfig.fromEnv();
-                connectionFactory = new ConnectionFactory(dbConfig);
+            System.out.println("[Main] DB_URL detected. Configuring MySQL persistence...");
+            DatabaseConfig dbConfig = DatabaseConfig.fromEnv();
+            connectionFactory = new ConnectionFactory(dbConfig);
 
-                if (connectionFactory.testConnection()) {
-                    System.out.println("[Main] Connected to MySQL successfully. Initializing schema if needed...");
-                    try {
-                        connectionFactory.initializeSchema("/schema.sql");
-                        System.out.println("[Main] Schema verified/initialized.");
-                    } catch (Exception ex) {
-                        System.out.println("[Main] Notice during schema init: " + ex.getMessage());
-                    }
-
-                    TransactionManager txManager = new TransactionManager(connectionFactory);
-                    JdbcAccountRepository jdbcAccountRepo = new JdbcAccountRepository();
-                    JdbcOrderRepository jdbcOrderRepo = new JdbcOrderRepository();
-                    JdbcTradeRepository jdbcTradeRepo = new JdbcTradeRepository();
-                    IdempotencyRepository idempRepo = new IdempotencyRepository();
-
-                    exchangeService = new ExchangeService(
-                            engine, accountService, txManager, jdbcAccountRepo, jdbcOrderRepo, jdbcTradeRepo, idempRepo
-                    );
-
-                    System.out.println("[Main] Recovering active state for RELIANCE.NS, TCS.NS, INFOSYS.NS...");
-                    for (String symbol : List.of("RELIANCE.NS", "TCS.NS", "INFOSYS.NS")) {
-                        try {
-                            exchangeService.recoverSymbolFromDatabase(symbol);
-                        } catch (Exception recEx) {
-                            System.err.println("[Main] Warning: Could not recover " + symbol + ": " + recEx.getMessage());
-                        }
-                    }
-                    System.out.println("[Main] Database-backed ExchangeService initialized successfully.");
-                } else {
-                    System.err.println("[Main] Database ping failed. Falling back to in-memory mode.");
-                    exchangeService = new ExchangeService(engine, accountService);
-                }
-            } catch (Exception e) {
-                System.err.println("[Main] Database initialization failed (" + e.getMessage() + "). Falling back to in-memory mode.");
-                exchangeService = new ExchangeService(engine, accountService);
+            if (!connectionFactory.testConnection()) {
+                System.err.println("[Main] FATAL: Database is configured via DB_URL but connection verification failed!");
+                System.err.println("[Main] Production safety violation: Refusing to silently fall back to in-memory mode.");
+                System.exit(1);
             }
-        } else {
-            System.out.println("[Main] DB_URL not set. Running in fast in-memory mode.");
+
+            System.out.println("[Main] Connected to MySQL successfully. Initializing schema if needed...");
+            try {
+                connectionFactory.initializeSchema("/schema.sql");
+                System.out.println("[Main] Schema verified/initialized.");
+            } catch (Exception ex) {
+                System.out.println("[Main] Notice during schema init: " + ex.getMessage());
+            }
+
+            TransactionManager txManager = new TransactionManager(connectionFactory);
+            JdbcAccountRepository jdbcAccountRepo = new JdbcAccountRepository();
+            JdbcOrderRepository jdbcOrderRepo = new JdbcOrderRepository();
+            JdbcTradeRepository jdbcTradeRepo = new JdbcTradeRepository();
+            IdempotencyRepository idempRepo = new IdempotencyRepository();
+
+            exchangeService = new ExchangeService(
+                    engine, accountService, txManager, jdbcAccountRepo, jdbcOrderRepo, jdbcTradeRepo, idempRepo
+            );
+
+            System.out.println("[Main] Recovering active state for RELIANCE.NS, TCS.NS, INFOSYS.NS...");
+            for (String symbol : List.of("RELIANCE.NS", "TCS.NS", "INFOSYS.NS")) {
+                try {
+                    exchangeService.recoverSymbolFromDatabase(symbol);
+                } catch (Exception recEx) {
+                    System.err.println("[Main] Warning: Could not recover " + symbol + ": " + recEx.getMessage());
+                }
+            }
+            System.out.println("[Main] Database-backed ExchangeService initialized successfully.");
+        } else if (inMemoryAllowed) {
+            System.out.println("[Main] DB_URL not set and IN_MEMORY_ALLOWED=true. Running in fast in-memory mode.");
             exchangeService = new ExchangeService(engine, accountService);
+        } else {
+            System.err.println("[Main] FATAL: DB_URL is not set and IN_MEMORY_ALLOWED is not true.");
+            System.err.println("[Main] Production safety violation: Provide DB_URL, DB_USER, DB_PASSWORD or explicitly set IN_MEMORY_ALLOWED=true for development.");
+            System.exit(1);
+            return;
         }
 
         // 2. Pre-seed default demo accounts in memory if not already present

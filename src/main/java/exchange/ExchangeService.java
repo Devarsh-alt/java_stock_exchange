@@ -31,6 +31,8 @@ public class ExchangeService {
     private final JdbcTradeRepository jdbcTradeRepo;
     private final IdempotencyRepository idempRepo;
     private final CopyOnWriteArrayList<TradeListener> listeners = new CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ConcurrentLinkedDeque<Trade> committedTape = new java.util.concurrent.ConcurrentLinkedDeque<>();
+    private static final int MAX_TAPE_SIZE = 1000;
 
     public ExchangeService(MatchingEngine engine) {
         this(engine, new AccountService(), null, null, null, null, null);
@@ -499,6 +501,12 @@ public class ExchangeService {
 
     private void notifyListeners(List<Trade> trades) {
         if (trades.isEmpty()) return;
+        for (Trade t : trades) {
+            committedTape.addFirst(t);
+            while (committedTape.size() > MAX_TAPE_SIZE) {
+                committedTape.pollLast();
+            }
+        }
         for (TradeListener l : listeners) {
             try {
                 l.onTrades(trades);
@@ -506,6 +514,13 @@ public class ExchangeService {
                 System.err.println("[ExchangeService] listener error: " + e.getMessage());
             }
         }
+    }
+
+    public List<Trade> getTradeTape(String symbol, int limit) {
+        return committedTape.stream()
+                .filter(t -> symbol == null || symbol.isBlank() || t.getSymbol().equalsIgnoreCase(symbol))
+                .limit(limit > 0 ? limit : 50)
+                .toList();
     }
 
     @FunctionalInterface

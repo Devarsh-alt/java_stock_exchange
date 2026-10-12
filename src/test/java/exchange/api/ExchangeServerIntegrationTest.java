@@ -100,10 +100,13 @@ class ExchangeServerIntegrationTest {
     @Test
     @DisplayName("POST /api/v1/orders places order and updates orderbook")
     void testSubmitOrderAndOrderBook() throws Exception {
+        Account acc = exchangeService.getAccountService().getOrCreateAccount(999911L, new BigDecimal("500000.00"));
+        acc.depositShares("TEST_ORD", 1000L);
+
         String orderJson = "{" +
                 "\"clientOrderId\":\"test-cli-1\"," +
-                "\"userId\":999901," +
-                "\"symbol\":\"AAPL\"," +
+                "\"userId\":999911," +
+                "\"symbol\":\"TEST_ORD\"," +
                 "\"side\":\"SELL\"," +
                 "\"type\":\"LIMIT\"," +
                 "\"price\":\"155.00\"," +
@@ -114,9 +117,9 @@ class ExchangeServerIntegrationTest {
         assertEquals(200, orderRes.statusCode());
         assertTrue(orderRes.body().contains("\"trades\":[]"));
 
-        HttpResponse bookRes = sendRequest("GET", "/api/v1/orderbook/AAPL", null);
+        HttpResponse bookRes = sendRequest("GET", "/api/v1/orderbook/TEST_ORD", null);
         assertEquals(200, bookRes.statusCode());
-        assertTrue(bookRes.body().contains("\"symbol\":\"AAPL\""));
+        assertTrue(bookRes.body().contains("\"symbol\":\"TEST_ORD\""));
         assertTrue(bookRes.body().contains("\"price\":\"155.00\""));
         assertTrue(bookRes.body().contains("\"quantity\":50"));
     }
@@ -139,5 +142,68 @@ class ExchangeServerIntegrationTest {
         HttpResponse stopRes = sendRequest("POST", "/api/v1/simulator/stop", "");
         assertEquals(200, stopRes.statusCode());
         assertTrue(stopRes.body().contains("\"running\":false"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/ready returns readiness and operational mode")
+    void testReadinessProbe() throws Exception {
+        HttpResponse res = sendRequest("GET", "/api/v1/ready", null);
+        assertEquals(200, res.statusCode());
+        assertTrue(res.body().contains("\"status\":\"ok\""));
+        assertTrue(res.body().contains("\"mode\":\"in-memory\""));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/trades returns committed trade tape after matching")
+    void testTradeTapeEndpoint() throws Exception {
+        Account seller = exchangeService.getAccountService().getOrCreateAccount(999921L, new BigDecimal("100000.00"));
+        seller.depositShares("TEST_TAPE", 100L);
+
+        Account buyer = exchangeService.getAccountService().getOrCreateAccount(999922L, new BigDecimal("100000.00"));
+
+        // 1. Submit resting sell
+        String sellOrder = "{" +
+                "\"clientOrderId\":\"tape-sell-1\"," +
+                "\"userId\":999921," +
+                "\"symbol\":\"TEST_TAPE\"," +
+                "\"side\":\"SELL\"," +
+                "\"type\":\"LIMIT\"," +
+                "\"price\":\"200.00\"," +
+                "\"quantity\":10" +
+                "}";
+        HttpResponse sellRes = sendRequest("POST", "/api/v1/orders", sellOrder);
+        assertEquals(200, sellRes.statusCode());
+
+        // 2. Submit matching buy order
+        String buyOrder = "{" +
+                "\"clientOrderId\":\"tape-buy-1\"," +
+                "\"userId\":999922," +
+                "\"symbol\":\"TEST_TAPE\"," +
+                "\"side\":\"BUY\"," +
+                "\"type\":\"LIMIT\"," +
+                "\"price\":\"200.00\"," +
+                "\"quantity\":10" +
+                "}";
+
+        HttpResponse buyRes = sendRequest("POST", "/api/v1/orders", buyOrder);
+        assertEquals(200, buyRes.statusCode());
+        assertTrue(buyRes.body().contains("\"trades\":["));
+
+        // 3. Verify Trade Tape endpoint returns the executed trade
+        HttpResponse tapeRes = sendRequest("GET", "/api/v1/trades?symbol=TEST_TAPE&limit=10", null);
+        assertEquals(200, tapeRes.statusCode());
+        assertTrue(tapeRes.body().contains("\"symbol\":\"TEST_TAPE\""));
+        assertTrue(tapeRes.body().contains("\"quantity\":10"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/simulator/metrics returns throughput and p50/p95/p99 latencies")
+    void testMetricsPercentiles() throws Exception {
+        HttpResponse res = sendRequest("GET", "/api/v1/simulator/metrics", null);
+        assertEquals(200, res.statusCode());
+        assertTrue(res.body().contains("\"latencyP50Micros\""));
+        assertTrue(res.body().contains("\"latencyP95Micros\""));
+        assertTrue(res.body().contains("\"latencyP99Micros\""));
+        assertTrue(res.body().contains("\"ordersPerSecond\""));
     }
 }

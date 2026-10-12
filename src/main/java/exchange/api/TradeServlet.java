@@ -25,17 +25,17 @@ public class TradeServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        // In-memory path: no trade store is persisted in memory between requests.
-        // Return an empty list with a note. DB-backed path will be added when DB is wired.
         String symbol = req.getParameter("symbol");
-        String userId = req.getParameter("userId");
+        String limitStr = req.getParameter("limit");
+        int limit = 50;
+        if (limitStr != null && !limitStr.isBlank()) {
+            try {
+                limit = Math.min(200, Math.max(1, Integer.parseInt(limitStr.strip())));
+            } catch (NumberFormatException ignored) {}
+        }
 
-        StringBuilder sb = new StringBuilder("{");
-        if (symbol != null) sb.append("\"symbol\":").append(JsonUtil.escapeString(symbol)).append(",");
-        if (userId != null) sb.append("\"userId\":").append(JsonUtil.escapeString(userId)).append(",");
-        sb.append("\"trades\":[]}");
-
-        JsonUtil.writeOk(resp, sb.toString());
+        java.util.List<Trade> trades = exchangeService.getTradeTape(symbol, limit);
+        JsonUtil.writeOk(resp, OrderServlet.buildTradesJson(trades));
     }
 
     @Override

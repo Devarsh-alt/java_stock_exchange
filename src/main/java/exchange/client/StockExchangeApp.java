@@ -33,6 +33,7 @@ public class StockExchangeApp extends Application {
 
     private ComboBox<String> symbolBox;
     private TextArea orderBookArea;
+    private TextArea tradeTapeArea;
     private TextArea accountArea;
     private TextArea logsArea;
 
@@ -43,6 +44,7 @@ public class StockExchangeApp extends Application {
     private TextField userIdField;
 
     private Label simStatusLabel;
+    private Label metricsSummaryLabel;
 
     @Override
     public void start(Stage primaryStage) {
@@ -187,10 +189,19 @@ public class StockExchangeApp extends Application {
 
         orderBookArea = new TextArea();
         orderBookArea.setEditable(false);
-        orderBookArea.setPrefRowCount(25);
+        orderBookArea.setPrefRowCount(14);
         orderBookArea.setStyle("-fx-control-inner-background: #1e1e24; -fx-text-fill: #a5d6a7; -fx-font-family: monospace; -fx-font-size: 13px;");
 
-        box.getChildren().addAll(header, orderBookArea);
+        Label tapeTitle = new Label("Committed Trade Tape");
+        tapeTitle.setFont(Font.font("System", FontWeight.BOLD, 14));
+        tapeTitle.setTextFill(Color.WHITE);
+
+        tradeTapeArea = new TextArea();
+        tradeTapeArea.setEditable(false);
+        tradeTapeArea.setPrefRowCount(12);
+        tradeTapeArea.setStyle("-fx-control-inner-background: #1e1e24; -fx-text-fill: #ffd54f; -fx-font-family: monospace; -fx-font-size: 12px;");
+
+        box.getChildren().addAll(header, orderBookArea, new Separator(), tapeTitle, tradeTapeArea);
         return box;
     }
 
@@ -216,16 +227,20 @@ public class StockExchangeApp extends Application {
         simStatusLabel.setTextFill(Color.LIGHTGRAY);
         simControls.getChildren().addAll(startSimBtn, stopSimBtn, simStatusLabel);
 
+        metricsSummaryLabel = new Label("Throughput: 0 op/s | p50: 0µs | p95: 0µs | p99: 0µs");
+        metricsSummaryLabel.setFont(Font.font("System", FontWeight.BOLD, 11));
+        metricsSummaryLabel.setTextFill(Color.LIGHTCYAN);
+
         Label logTitle = new Label("Activity Log");
         logTitle.setFont(Font.font("System", FontWeight.BOLD, 14));
         logTitle.setTextFill(Color.WHITE);
 
         logsArea = new TextArea();
         logsArea.setEditable(false);
-        logsArea.setPrefRowCount(18);
+        logsArea.setPrefRowCount(16);
         logsArea.setStyle("-fx-control-inner-background: #1e1e24; -fx-text-fill: #ffcc80; -fx-font-family: monospace;");
 
-        box.getChildren().addAll(simTitle, simControls, new Separator(), logTitle, logsArea);
+        box.getChildren().addAll(simTitle, simControls, metricsSummaryLabel, new Separator(), logTitle, logsArea);
         return box;
     }
 
@@ -290,7 +305,15 @@ public class StockExchangeApp extends Application {
             } catch (Exception ignored) {}
         }
 
-        // 3. Check simulator status
+        // 3. Fetch Committed Trade Tape
+        try {
+            var tapeRes = client.get("/api/v1/trades?symbol=" + symbol + "&limit=30");
+            if (tapeRes.statusCode() == 200) {
+                Platform.runLater(() -> tradeTapeArea.setText(formatTradeTape(tapeRes.body())));
+            }
+        } catch (Exception ignored) {}
+
+        // 4. Check simulator status and throughput / latency metrics
         try {
             var simRes = client.get("/api/v1/simulator/status");
             if (simRes.statusCode() == 200) {
@@ -299,6 +322,12 @@ public class StockExchangeApp extends Application {
                     simStatusLabel.setText("Sim: " + (running ? "RUNNING" : "STOPPED"));
                     simStatusLabel.setTextFill(running ? Color.LIGHTGREEN : Color.LIGHTGRAY);
                 });
+            }
+
+            var metricsRes = client.get("/api/v1/simulator/metrics");
+            if (metricsRes.statusCode() == 200) {
+                String mJson = metricsRes.body();
+                Platform.runLater(() -> metricsSummaryLabel.setText(formatMetricsSummary(mJson)));
             }
         } catch (Exception ignored) {}
     }
@@ -363,6 +392,33 @@ public class StockExchangeApp extends Application {
 
     private String formatAccount(String json) {
         return "=== ACCOUNT ===\n" + json.replace("{", "{\n  ").replace("}", "\n}").replace(",", ",\n  ");
+    }
+
+    private String formatTradeTape(String json) {
+        return "=== COMMITTED TRADE TAPE ===\n" + json.replace("{", "{\n  ").replace("}", "\n}").replace(",", ",\n  ");
+    }
+
+    private String formatMetricsSummary(String json) {
+        try {
+            String ops = extractValue(json, "ordersPerSecond");
+            String p50 = extractValue(json, "latencyP50Micros");
+            String p95 = extractValue(json, "latencyP95Micros");
+            String p99 = extractValue(json, "latencyP99Micros");
+            return "Throughput: " + (ops != null ? ops : "0") + " op/s | p50: " + (p50 != null ? p50 : "0") + "µs | p95: " + (p95 != null ? p95 : "0") + "µs | p99: " + (p99 != null ? p99 : "0") + "µs";
+        } catch (Exception e) {
+            return "Throughput: -- | Latencies: --";
+        }
+    }
+
+    private String extractValue(String json, String field) {
+        String key = "\"" + field + "\":";
+        int idx = json.indexOf(key);
+        if (idx == -1) return null;
+        int start = idx + key.length();
+        int end = json.indexOf(",", start);
+        if (end == -1) end = json.indexOf("}", start);
+        if (end == -1) return null;
+        return json.substring(start, end).trim();
     }
 
     @Override
