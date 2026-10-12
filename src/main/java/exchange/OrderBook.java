@@ -138,6 +138,12 @@ public class OrderBook {
         return out;
     }
 
+    public void clear() {
+        bids.clear();
+        asks.clear();
+        index.clear();
+    }
+
     public boolean isEmpty() { return bids.isEmpty() && asks.isEmpty(); }
     public int     size()    { return index.size(); }
     public String  getSymbol() { return symbol; }

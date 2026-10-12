@@ -78,6 +78,33 @@ public class Order {
         this.status        = OrderStatus.NEW;
     }
 
+    public Order(String id, String clientOrderId, long userId, String symbol,
+                 OrderSide side, OrderType type, BigDecimal price,
+                 BigDecimal reservedPrice,
+                 long originalQty, long remainingQty, long filledQty,
+                 long arrivalSeq, OrderStatus status, Instant createdAt) {
+        if (originalQty <= 0) throw new IllegalArgumentException("originalQty must be positive");
+        if (type == OrderType.LIMIT) {
+            Objects.requireNonNull(price, "LIMIT order requires a price");
+            if (price.compareTo(BigDecimal.ZERO) <= 0)
+                throw new IllegalArgumentException("LIMIT price must be positive");
+        }
+        this.id            = Objects.requireNonNull(id, "id cannot be null");
+        this.clientOrderId = Objects.requireNonNull(clientOrderId);
+        this.userId        = userId;
+        this.symbol        = Objects.requireNonNull(symbol);
+        this.side          = Objects.requireNonNull(side);
+        this.type          = Objects.requireNonNull(type);
+        this.price         = price;
+        this.reservedPrice = reservedPrice;
+        this.originalQty   = originalQty;
+        this.remainingQty  = remainingQty;
+        this.filledQty     = filledQty;
+        this.arrivalSeq    = arrivalSeq;
+        this.status        = Objects.requireNonNull(status);
+        this.createdAt     = Objects.requireNonNull(createdAt);
+    }
+
     // ── State transitions (called only by matching thread) ────────────────────
 
     /** Transition NEW → OPEN (placed on book). */

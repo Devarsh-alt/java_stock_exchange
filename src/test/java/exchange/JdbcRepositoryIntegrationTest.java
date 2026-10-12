@@ -233,4 +233,46 @@ class JdbcRepositoryIntegrationTest {
         assertTrue(cancelled, "Order cancellation should succeed");
         assertNull(engine.getOrder(sym, restingMaker.getId()), "Cancelled order should be removed from book");
     }
+
+    @Test
+    @DisplayName("Startup recovery: Reconstructing order book from committed database state restores active orders and price-time priority")
+    void startupRecoveryFromDatabaseState() throws SQLException {
+        long sellerId = nextTestUserId();
+        String sym = "INFY.NS";
+
+        txManager.executeInTransaction(conn -> {
+            accountRepo.createAccount(conn, sellerId, new BigDecimal("1000.0000"));
+            accountRepo.settleBuyFill(conn, sellerId, sym, BigDecimal.ZERO, BigDecimal.ZERO, 100L);
+            return null;
+        });
+
+        MatchingEngine engine1 = new MatchingEngine();
+        ExchangeService service1 = new ExchangeService(engine1, new AccountService(), txManager, accountRepo, orderRepo, tradeRepo, idempRepo);
+
+        // Submit 2 resting orders in DB
+        String ord1 = "ord-" + UUID.randomUUID();
+        String ord2 = "ord-" + UUID.randomUUID();
+        service1.submitOrder(ord1, sellerId, sym, OrderSide.SELL, OrderType.LIMIT, new BigDecimal("150.00"), 10L);
+        service1.submitOrder(ord2, sellerId, sym, OrderSide.SELL, OrderType.LIMIT, new BigDecimal("155.00"), 20L);
+
+        // Simulate complete node crash/restart: create brand new MatchingEngine and ExchangeService
+        MatchingEngine engineRestarted = new MatchingEngine();
+        ExchangeService serviceRestarted = new ExchangeService(engineRestarted, new AccountService(), txManager, accountRepo, orderRepo, tradeRepo, idempRepo);
+
+        // Initially restarted engine has empty book
+        OrderBookSnapshot initialSnapshot = engineRestarted.snapshot(sym);
+        assertTrue(initialSnapshot.getAsks().isEmpty(), "Restarted engine starts empty before recovery");
+
+        // Recover symbol from DB
+        serviceRestarted.recoverSymbolFromDatabase(sym);
+
+        // Verify book is accurately rebuilt in price-time FIFO order
+        OrderBookSnapshot recoveredSnapshot = engineRestarted.snapshot(sym);
+        assertEquals(2, recoveredSnapshot.getAsks().size(), "Both active orders must be recovered");
+        assertEquals(new BigDecimal("150.00"), recoveredSnapshot.getAsks().get(0).getPrice());
+        assertEquals(10L, recoveredSnapshot.getAsks().get(0).getRemainingQty());
+        assertEquals(new BigDecimal("155.00"), recoveredSnapshot.getAsks().get(1).getPrice());
+        assertEquals(20L, recoveredSnapshot.getAsks().get(1).getRemainingQty());
+        assertFalse(serviceRestarted.isSymbolQuarantined(sym));
+    }
 }

@@ -56,6 +56,67 @@ public class ExchangeService {
         this.idempRepo = idempRepo;
     }
 
+    private final java.util.concurrent.ConcurrentHashMap.KeySetView<String, Boolean> quarantinedSymbols =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    public boolean isSymbolQuarantined(String symbol) {
+        return quarantinedSymbols.contains(symbol);
+    }
+
+    public void quarantineSymbol(String symbol) {
+        quarantinedSymbols.add(symbol);
+        System.err.println("[ExchangeService] QUARANTINED symbol: " + symbol);
+    }
+
+    public void unquarantineSymbol(String symbol) {
+        quarantinedSymbols.remove(symbol);
+        System.out.println("[ExchangeService] UNQUARANTINED symbol: " + symbol);
+    }
+
+    /**
+     * Reconstructs in-memory order book for a symbol from committed database state,
+     * ensuring strict price-time priority and accurate projection.
+     */
+    public void recoverSymbolFromDatabase(String symbol) {
+        if (!isDatabaseBacked()) return;
+
+        java.util.concurrent.locks.ReentrantLock lock = engine.lockFor(symbol);
+        lock.lock();
+        try {
+            OrderBook book = engine.bookFor(symbol);
+            book.clear();
+
+            List<JdbcOrderRepository.OrderRecord> activeOrders = txManager.executeInTransaction(conn ->
+                    jdbcOrderRepo.findActiveOrders(conn, symbol));
+
+            for (JdbcOrderRepository.OrderRecord rec : activeOrders) {
+                Order order = new Order(
+                        rec.id(),
+                        rec.clientOrderId(),
+                        rec.userId(),
+                        rec.symbol(),
+                        rec.side(),
+                        rec.type(),
+                        rec.price(),
+                        rec.reservedPrice(),
+                        rec.originalQty(),
+                        rec.remainingQty(),
+                        rec.filledQty(),
+                        rec.arrivalSeq(),
+                        rec.status(),
+                        rec.createdAt()
+                );
+                book.addLimitOrder(order);
+            }
+            unquarantineSymbol(symbol);
+        } catch (java.sql.SQLException e) {
+            quarantineSymbol(symbol);
+            throw new ExchangeException("Failed to recover symbol " + symbol + " from database: " + e.getMessage(), e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public boolean isDatabaseBacked() {
         return txManager != null && jdbcAccountRepo != null && jdbcOrderRepo != null && jdbcTradeRepo != null && idempRepo != null;
     }
@@ -96,9 +157,16 @@ public class ExchangeService {
                                                 BigDecimal price, long quantity) {
         String requestHash = IdempotencyRepository.computeRequestHash(userId, symbol, side, type, quantity, price);
 
+        if (isSymbolQuarantined(symbol)) {
+            throw new ExchangeException("Symbol " + symbol + " is quarantined due to an unresolved error. Reconcile before trading.");
+        }
+
         java.util.concurrent.locks.ReentrantLock lock = engine.lockFor(symbol);
         lock.lock();
         try {
+            if (isSymbolQuarantined(symbol)) {
+                throw new ExchangeException("Symbol " + symbol + " is quarantined due to an unresolved error. Reconcile before trading.");
+            }
             OrderBook book = engine.bookFor(symbol);
 
             // 1. Check idempotency under lock before allocating sequence or matching
@@ -119,6 +187,7 @@ public class ExchangeService {
                     });
                 }
             } catch (java.sql.SQLException e) {
+                quarantineSymbol(symbol);
                 throw new ExchangeException("Failed to verify idempotency: " + e.getMessage(), e);
             }
 
@@ -227,9 +296,12 @@ public class ExchangeService {
                         )).toList();
                     });
                 } catch (java.sql.SQLException ex) {
+                    quarantineSymbol(symbol);
                     throw new ExchangeException("Failed to retrieve existing trades: " + ex.getMessage(), ex);
                 }
             } catch (java.sql.SQLException sqle) {
+                // If the error might be an uncertain outcome, quarantine the symbol
+                quarantineSymbol(symbol);
                 throw new ExchangeException("Transaction failed: " + sqle.getMessage(), sqle);
             }
 
@@ -242,7 +314,18 @@ public class ExchangeService {
                     staged.restIncomingOnBook(),
                     staged.cancelIncomingRemainder()
             );
-            engine.applyCommittedMatch(finalStaged, book);
+            try {
+                engine.applyCommittedMatch(finalStaged, book);
+            } catch (Throwable t) {
+                // Failure after commit: do NOT retry DB transaction. Quarantine symbol and rebuild from DB.
+                quarantineSymbol(symbol);
+                try {
+                    recoverSymbolFromDatabase(symbol);
+                } catch (Exception recEx) {
+                    t.addSuppressed(recEx);
+                }
+                throw new ExchangeException("In-memory projection error after commit; symbol recovered/quarantined: " + t.getMessage(), t);
+            }
 
             // 5. Notify listeners (fail-safe)
             notifyListeners(finalStaged.trades());
