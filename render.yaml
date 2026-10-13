@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: java-stock-exchange
+    name: java-stock-exchange-sg
     runtime: docker
     plan: free
-    region: oregon
+    region: singapore
     dockerfilePath: Dockerfile
     envVars:
       - key: PORT
