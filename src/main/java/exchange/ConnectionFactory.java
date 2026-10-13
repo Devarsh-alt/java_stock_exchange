@@ -58,12 +58,35 @@ public class ConnectionFactory {
      * @return true if connection succeeds and ping returns valid within timeout
      */
     public boolean testConnection() {
-        try (Connection conn = getConnection()) {
-            return conn.isValid(config.getConnectionTimeoutMs() / 1000);
-        } catch (SQLException e) {
-            return false;
+    try (Connection conn = getConnection()) {
+        return conn.isValid(config.getConnectionTimeoutMs() / 1000);
+    } catch (SQLException e) {
+        System.err.println("[DB-DIAGNOSTIC] Connection failed.");
+        SQLException current = e;
+
+        while (current != null) {
+            System.err.println(
+                "[DB-DIAGNOSTIC] Type=" + current.getClass().getSimpleName()
+                + ", SQLState=" + current.getSQLState()
+                + ", ErrorCode=" + current.getErrorCode()
+                + ", Message=" + current.getMessage()
+            );
+            current = current.getNextException();
         }
+
+        Throwable cause = e.getCause();
+        while (cause != null) {
+            System.err.println(
+                "[DB-DIAGNOSTIC] Cause="
+                + cause.getClass().getSimpleName()
+                + ": " + cause.getMessage()
+            );
+            cause = cause.getCause();
+        }
+
+        return false;
     }
+}
 
     /**
      * Executes a SQL schema script from the classpath (e.g. {@code /schema.sql}).
