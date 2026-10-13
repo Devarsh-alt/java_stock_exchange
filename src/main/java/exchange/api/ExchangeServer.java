@@ -27,6 +27,7 @@ import java.util.Objects;
  *   POST /api/v1/simulator/start    — Start simulated traders
  *   POST /api/v1/simulator/stop     — Stop simulated traders
  *   GET  /api/v1/simulator/metrics  — Simulator metrics
+ *   GET  /                         — Live dashboard page (no auth; page asks for the key)
  * </pre>
  */
 public class ExchangeServer {
@@ -63,6 +64,9 @@ public class ExchangeServer {
 
         // Simulator controls
         context.addServlet(new ServletHolder(new SimulatorServlet(simulatedTraderService)), "/api/v1/simulator/*");
+
+        // Dashboard UI: default servlet, serves only "/" and "/index.html"
+        context.addServlet(new ServletHolder(new DashboardServlet()), "/");
 
         server.setHandler(context);
     }

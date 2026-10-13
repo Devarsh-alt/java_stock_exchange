@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stock exchange simulator</title>
+<style>
+  :root {
+    --paper: #edf0f2;
+    --surface: #fafbfc;
+    --ink: #16202b;
+    --muted: #5b6773;
+    --line: #d3dae0;
+    --bid: #0b6e8a;
+    --bid-soft: #cfe6ee;
+    --ask: #b84f17;
+    --ask-soft: #f4dccd;
+    --ok: #1f7a4d;
+    --warn: #9a6a00;
+    --bad: #b3261e;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #10161d;
+      --surface: #171f28;
+      --ink: #e6ebf0;
+      --muted: #93a0ad;
+      --line: #2a3643;
+      --bid: #4fb3d1;
+      --bid-soft: #17394a;
+      --ask: #f09a62;
+      --ask-soft: #4a2b19;
+      --ok: #57c28a;
+      --warn: #e0b24a;
+      --bad: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.45;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    font-variant-numeric: tabular-nums;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--bid); outline-offset: 2px; }
+
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 20px 20px 40px; }
+
+  /* Header */
+  header { display: flex; flex-wrap: wrap; gap: 16px 32px; justify-content: space-between; align-items: flex-end; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-family: var(--serif); font-weight: 600; font-size: 28px; letter-spacing: -0.01em; }
+  .sub { margin: 2px 0 0; color: var(--muted); }
+  .status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pill.ok .dot { background: var(--ok); }
+  .pill.warn .dot { background: var(--warn); }
+  .pill.bad .dot { background: var(--bad); }
+
+  .keybar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px; }
+  .keybar label { color: var(--muted); }
+  .keybar input { width: 260px; max-width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  .notice { margin: 14px 0 0; padding: 10px 14px; border-left: 3px solid var(--warn); background: var(--surface); }
+  .notice[hidden] { display: none; }
+
+  /* Layout */
+  .grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); gap: 28px; margin-top: 22px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .panel + .panel { margin-top: 20px; }
+
+  /* Symbol tabs + last price */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab { padding: 6px 14px; border: 1px solid var(--line); border-radius: 6px; background: transparent; cursor: pointer; }
+  .tab[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .quote { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin: 16px 0 6px; }
+  .last { font-family: var(--serif); font-size: 52px; line-height: 1; font-weight: 600; letter-spacing: -0.02em; }
+  .last small { display: block; font-family: var(--sans); font-size: 13px; font-weight: 400; letter-spacing: 0; color: var(--muted); margin-top: 6px; }
+  .delta.up { color: var(--bid); }
+  .delta.down { color: var(--ask); }
+  #spark { width: 220px; height: 54px; }
+
+  /* Depth ladder */
+  .ladder { margin-top: 14px; }
+  .lh, .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 3px 8px; }
+  .lh { color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .lh span:nth-child(n+2), .row span:nth-child(n+2) { text-align: right; }
+  .row { position: relative; min-height: 26px; align-items: center; }
+  .row .bar { position: absolute; top: 2px; bottom: 2px; right: 0; border-radius: 3px; transition: width .3s ease; z-index: 0; }
+  .row span { position: relative; z-index: 1; }
+  .row.ask .bar { background: var(--ask-soft); }
+  .row.bid .bar { background: var(--bid-soft); }
+  .row.ask .p { color: var(--ask); font-weight: 600; }
+  .row.bid .p { color: var(--bid); font-weight: 600; }
+  .spread { display: flex; justify-content: space-between; gap: 12px; padding: 8px; margin: 4px 0; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); color: var(--muted); font-size: 13px; }
+  .empty { color: var(--muted); padding: 10px 8px; }
+  @media (prefers-reduced-motion: reduce) { .row .bar { transition: none; } }
+
+  /* Trades */
+  .tape { width: 100%; border-collapse: collapse; }
+  .tape th { text-align: left; font-weight: 500; color: var(--muted); font-size: 13px; padding: 4px 8px 6px; border-bottom: 1px solid var(--line); }
+  .tape td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  .tape th:nth-child(n+2), .tape td:nth-child(n+2) { text-align: right; }
+  .tape-wrap { overflow-x: auto; }
+
+  /* Side panels */
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+  button.btn { padding: 7px 14px; border: 1px solid var(--ink); border-radius: 6px; background: var(--ink); color: var(--surface); cursor: pointer; }
+  button.btn.quiet { background: transparent; color: var(--ink); border-color: var(--line); }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  dl { margin: 10px 0 0; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .kv:last-child { border-bottom: 0; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-weight: 600; }
+  .kv dd.bad { color: var(--bad); }
+  .lat { margin-top: 12px; }
+  .lat .line { display: grid; grid-template-columns: 38px 1fr 76px; gap: 10px; align-items: center; padding: 3px 0; }
+  .lat .track { height: 8px; background: var(--paper); border-radius: 4px; overflow: hidden; }
+  .lat .fill { height: 100%; background: var(--bid); border-radius: 4px; transition: width .3s ease; }
+  .lat .val { text-align: right; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+  form.order { display: grid; gap: 12px; }
+  .field { display: grid; gap: 4px; }
+  .field label { color: var(--muted); font-size: 13px; }
+  .field input, .field select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { padding: 8px; border: 0; background: transparent; cursor: pointer; }
+  .seg button[aria-pressed="true"].buy { background: var(--bid); color: #fff; }
+  .seg button[aria-pressed="true"].sell { background: var(--ask); color: #fff; }
+  #orderMsg { min-height: 1.4em; margin: 0; }
+  #orderMsg.bad { color: var(--bad); }
+  #orderMsg.ok { color: var(--ok); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Stock exchange simulator</h1>
+      <p class="sub">Price-time priority matching engine, persisted to MySQL</p>
+    </div>
+    <div class="status" role="status" aria-live="polite">
+      <span class="pill" id="pillServer"><span class="dot"></span><span id="txtServer">Connecting</span></span>
+      <span class="pill" id="pillDb"><span class="dot"></span><span id="txtDb">Database unknown</span></span>
+      <span class="pill" id="pillSim"><span class="dot"></span><span id="txtSim">Simulator unknown</span></span>
+    </div>
+  </header>
+
+  <form class="keybar" id="keyForm">
+    <label for="apiKey">API key</label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="Paste the key set on the server">
+    <button class="btn" type="submit">Connect</button>
+  </form>
+  <p class="notice" id="notice" hidden></p>
+
+  <div class="grid">
+    <section aria-label="Market">
+      <div class="panel">
+        <div class="tabs" id="tabs"></div>
+
+        <div class="quote">
+          <div class="last" id="lastPrice">-<small id="lastNote">Waiting for the first trade</small></div>
+          <svg id="spark" viewBox="0 0 220 54" preserveAspectRatio="none" aria-label="Recent trade prices"></svg>
+        </div>
+
+        <div class="ladder" id="ladder">
+          <div class="lh"><span>Price</span><span>Quantity</span><span>Total</span></div>
+          <div id="asks"></div>
+          <div class="spread" id="spread"><span>Spread -</span><span>Mid -</span></div>
+          <div id="bids"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Recent trades</h2>
+        <div class="tape-wrap">
+          <table class="tape">
+            <thead><tr><th>Time</th><th>Price</th><th>Quantity</th></tr></thead>
+            <tbody id="tape"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="tapeEmpty">No trades for this symbol yet. Start the simulator, or place a buy and a sell at the same price.</p>
+      </div>
+    </section>
+
+    <aside aria-label="Controls and metrics">
+      <div class="panel">
+        <h2>Simulator</h2>
+        <p class="hint" style="margin-top:0">Four simulated traders send random limit orders into the engine.</p>
+        <div class="actions">
+          <button class="btn" data-sim="start" type="button">Start</button>
+          <button class="btn quiet" data-sim="pause" type="button">Pause</button>
+          <button class="btn quiet" data-sim="resume" type="button">Resume</button>
+          <button class="btn quiet" data-sim="stop" type="button">Stop</button>
+        </div>
+        <dl>
+          <div class="kv"><dt>Orders submitted</dt><dd id="mOrders">-</dd></div>
+          <div class="kv"><dt>Trades executed</dt><dd id="mTrades">-</dd></div>
+          <div class="kv"><dt>Shares traded</dt><dd id="mVolume">-</dd></div>
+          <div class="kv"><dt>Orders per second</dt><dd id="mOps">-</dd></div>
+          <div class="kv"><dt>Rejected orders</dt><dd id="mErrors">-</dd></div>
+        </dl>
+        <div class="lat">
+          <h2 style="margin-top:14px">Time to process an order</h2>
+          <div class="line"><span>p50</span><span class="track"><span class="fill" id="bar50" style="display:block;width:0"></span></span><span class="val" id="v50">-</span></div>
+          <div class="line"><span>p95</span><span class="track"><span class="fill" id="bar95" style="display:block;width:0"></span></span><span class="val" id="v95">-</span></div>
+          <div class="line"><span>p99</span><span class="track"><span class="fill" id="bar99" style="display:block;width:0"></span></span><span class="val" id="v99">-</span></div>
+          <p class="hint">Each order is committed to MySQL before it is acknowledged.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Place an order</h2>
+        <form class="order" id="orderForm">
+          <div class="seg" role="group" aria-label="Side">
+            <button type="button" class="buy" data-side="BUY" aria-pressed="true">Buy</button>
+            <button type="button" class="sell" data-side="SELL" aria-pressed="false">Sell</button>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label for="fType">Order type</label>
+              <select id="fType"><option value="LIMIT">Limit</option><option value="MARKET">Market</option></select>
+            </div>
+            <div class="field">
+              <label for="fPrice">Price</label>
+              <input id="fPrice" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="2500.00">
+            </div>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label for="fQty">Quantity</label>
+              <input id="fQty" type="number" step="1" min="1" value="10" inputmode="numeric">
+            </div>
+            <div class="field">
+              <label for="fUser">Trader ID</label>
+              <input id="fUser" type="number" step="1" min="1" value="900001" inputmode="numeric">
+            </div>
+          </div>
+          <button class="btn" type="submit" id="orderBtn">Send order</button>
+          <p id="orderMsg" role="status" aria-live="polite"></p>
+          <p class="hint">Trader IDs 900001 to 900004 have funded accounts in the database. The order goes to the symbol selected on the left.</p>
+        </form>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SYMBOLS = ["RELIANCE.NS", "TCS.NS"];
+  var state = {
+    key: safeGet("apiKey") || "",
+    symbol: SYMBOLS[0],
+    side: "BUY",
+    busy: false,
+    prefilled: {}
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function safeGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+  function safeSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "web-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  }
+
+  /* ---------- API ---------- */
+  function api(path, opts) {
+    opts = opts || {};
+    var headers = { "Content-Type": "application/json" };
+    if (state.key) headers["Authorization"] = "Bearer " + state.key;
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, 25000);
+    opts.headers = headers;
+    opts.signal = ctl.signal;
+    return fetch("/api/v1" + path, opts).then(function (res) {
+      return res.text().then(function (text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+        return { status: res.status, ok: res.ok, data: data };
+      });
+    }).finally(function () { clearTimeout(timer); });
+  }
+
+  /* ---------- Formatting ---------- */
+  function num(v) { return Number(v); }
+  function money(v) { return num(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function int(v) { return num(v).toLocaleString(); }
+  function fmtLatency(us) {
+    us = num(us);
+    if (!isFinite(us) || us <= 0) return "-";
+    if (us >= 1e6) return (us / 1e6).toFixed(2) + " s";
+    if (us >= 1e3) return (us / 1e3).toFixed(1) + " ms";
+    return Math.round(us) + " \u00b5s";
+  }
+  function pill(id, cls, text) {
+    var el = $(id);
+    el.className = "pill " + (cls || "");
+    el.querySelector("span:last-child").textContent = text;
+  }
+  function showNotice(msg) {
+    var n = $("notice");
+    if (!msg) { n.hidden = true; n.textContent = ""; return; }
+    n.hidden = false; n.textContent = msg;
+  }
+
+  /* ---------- Rendering ---------- */
+  function renderTabs() {
+    var host = $("tabs");
+    host.innerHTML = "";
+    SYMBOLS.forEach(function (s) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "tab"; b.textContent = s;
+      b.setAttribute("aria-pressed", String(s === state.symbol));
+      b.addEventListener("click", function () {
+        state.symbol = s; state.prefilled = {};
+        renderTabs(); refresh();
+      });
+      host.appendChild(b);
+    });
+  }
+
+  function addTotals(levels) {
+    var running = 0;
+    levels.forEach(function (l) { running += l.quantity; l.total = running; });
+  }
+
+  function rowHtml(l, cls, maxTotal) {
+    var w = maxTotal > 0 ? Math.max(2, Math.round(l.total / maxTotal * 100)) : 0;
+    return '<div class="row ' + cls + '"><span class="bar" style="width:' + w + '%"></span>' +
+           '<span class="p">' + money(l.price) + '</span>' +
+           '<span>' + int(l.quantity) + '</span>' +
+           '<span>' + int(l.total) + '</span></div>';
+  }
+
+  function renderBook(book) {
+    var depth = 8;
+    var bids = (book.bids || []).map(function (l) { return { price: num(l.price), quantity: num(l.quantity) }; })
+      .sort(function (a, b) { return b.price - a.price; }).slice(0, depth);
+    var asks = (book.asks || []).map(function (l) { return { price: num(l.price), quantity: num(l.quantity) }; })
+      .sort(function (a, b) { return a.price - b.price; }).slice(0, depth);
+
+    addTotals(bids);
+    addTotals(asks);
+    var maxTotal = Math.max(bids.length ? bids[bids.length - 1].total : 0,
+                            asks.length ? asks[asks.length - 1].total : 0);
+
+    // Asks are drawn with the best (lowest) price nearest the spread, so the list is reversed.
+    $("asks").innerHTML = asks.length
+      ? asks.slice().reverse().map(function (l) { return rowHtml(l, "ask", maxTotal); }).join("")
+      : '<p class="empty">No sell orders resting.</p>';
+    $("bids").innerHTML = bids.length
+      ? bids.map(function (l) { return rowHtml(l, "bid", maxTotal); }).join("")
+      : '<p class="empty">No buy orders resting.</p>';
+
+    if (bids.length && asks.length) {
+      var spread = asks[0].price - bids[0].price;
+      var mid = (asks[0].price + bids[0].price) / 2;
+      $("spread").innerHTML = "<span>Spread " + money(spread) + "</span><span>Mid " + money(mid) + "</span>";
+      if (!state.prefilled[state.symbol] && !$("fPrice").value) {
+        $("fPrice").value = mid.toFixed(2);
+        state.prefilled[state.symbol] = true;
+      }
+    } else {
+      $("spread").innerHTML = "<span>Spread -</span><span>Mid -</span>";
+    }
+  }
+
+  function renderSpark(prices) {
+    var svg = $("spark");
+    if (prices.length < 2) { svg.innerHTML = ""; return; }
+    var min = Math.min.apply(null, prices), max = Math.max.apply(null, prices);
+    var span = max - min || 1;
+    var pts = prices.map(function (p, i) {
+      var x = i / (prices.length - 1) * 220;
+      var y = 48 - (p - min) / span * 42;
+      return x.toFixed(1) + "," + y.toFixed(1);
+    }).join(" ");
+    svg.innerHTML = '<polyline fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="' + pts + '" style="color:var(--bid)"/>';
+  }
+
+  function renderTrades(list) {
+    list = (list || []).slice().sort(function (a, b) { return new Date(b.executedAt) - new Date(a.executedAt); });
+    var body = $("tape");
+    body.innerHTML = list.slice(0, 12).map(function (t) {
+      var d = new Date(t.executedAt);
+      var time = isNaN(d) ? "-" : d.toLocaleTimeString();
+      return "<tr><td>" + time + "</td><td>" + money(t.price) + "</td><td>" + int(t.quantity) + "</td></tr>";
+    }).join("");
+    $("tapeEmpty").style.display = list.length ? "none" : "block";
+
+    var last = $("lastPrice");
+    if (list.length) {
+      var newest = num(list[0].price), oldest = num(list[list.length - 1].price);
+      var diff = newest - oldest;
+      var cls = diff > 0 ? "up" : (diff < 0 ? "down" : "");
+      last.firstChild.nodeValue = money(newest);
+      $("lastNote").className = "delta " + cls;
+      $("lastNote").textContent = (diff >= 0 ? "+" : "") + money(diff) + " over the last " + list.length + " trades";
+      renderSpark(list.slice().reverse().map(function (t) { return num(t.price); }));
+    } else {
+      last.firstChild.nodeValue = "-";
+      $("lastNote").className = "";
+      $("lastNote").textContent = "Waiting for the first trade";
+      renderSpark([]);
+    }
+  }
+
+  function renderMetrics(m) {
+    $("mOrders").textContent = int(m.ordersSubmitted);
+    $("mTrades").textContent = int(m.tradesExecuted);
+    $("mVolume").textContent = int(m.executedVolume);
+    $("mOps").textContent = num(m.ordersPerSecond).toFixed(2);
+    var err = $("mErrors");
+    err.textContent = int(m.errorsCount);
+    err.className = num(m.errorsCount) > 0 ? "bad" : "";
+    var p50 = num(m.latencyP50Micros), p95 = num(m.latencyP95Micros), p99 = num(m.latencyP99Micros);
+    var max = Math.max(p50, p95, p99, 1);
+    $("v50").textContent = fmtLatency(p50);
+    $("v95").textContent = fmtLatency(p95);
+    $("v99").textContent = fmtLatency(p99);
+    $("bar50").style.width = (p50 / max * 100) + "%";
+    $("bar95").style.width = (p95 / max * 100) + "%";
+    $("bar99").style.width = (p99 / max * 100) + "%";
+  }
+
+  /* ---------- Polling ---------- */
+  function refresh() {
+    if (state.busy) return Promise.resolve();
+    state.busy = true;
+    var sym = encodeURIComponent(state.symbol);
+    return Promise.all([
+      api("/ready"),
+      api("/simulator/metrics"),
+      api("/simulator/status"),
+      api("/orderbook/" + sym),
+      api("/trades?symbol=" + sym + "&limit=60")
+    ]).then(function (r) {
+      var ready = r[0], metrics = r[1], status = r[2], book = r[3], trades = r[4];
+
+      pill("pillServer", "ok", "Server online");
+
+      if (ready.ok && ready.data) {
+        if (ready.data.mode === "persistent") pill("pillDb", "ok", "MySQL connected");
+        else pill("pillDb", "warn", "In-memory mode, nothing is saved");
+      }
+
+      if (metrics.status === 401 || book.status === 401) {
+        pill("pillSim", "warn", "Key needed");
+        showNotice("Enter the API key above and press Connect to load live data.");
+        return;
+      }
+      showNotice("");
+
+      if (status.ok && status.data) {
+        if (status.data.running && status.data.paused) pill("pillSim", "warn", "Simulator paused");
+        else if (status.data.running) pill("pillSim", "ok", "Simulator running");
+        else pill("pillSim", "", "Simulator stopped");
+      } else if (status.status === 503) {
+        pill("pillSim", "", "Simulator not enabled");
+      }
+
+      if (metrics.ok && metrics.data) renderMetrics(metrics.data);
+      if (book.ok && book.data) renderBook(book.data);
+      if (trades.ok && trades.data) renderTrades(trades.data.trades);
+    }).catch(function () {
+      pill("pillServer", "bad", "Server not responding");
+      showNotice("The server did not answer. On a free host it sleeps when idle, so the first request can take about a minute. This page retries automatically.");
+    }).finally(function () { state.busy = false; });
+  }
+
+  /* ---------- Actions ---------- */
+  function wireSimulator() {
+    var buttons = document.querySelectorAll("[data-sim]");
+    Array.prototype.forEach.call(buttons, function (b) {
+      b.addEventListener("click", function () {
+        var action = b.getAttribute("data-sim");
+        b.disabled = true;
+        api("/simulator/" + action, { method: "POST" }).then(function (res) {
+          if (res.status === 503) showNotice("The simulator is not enabled on this server. Set SIMULATOR_ENABLED=true and redeploy.");
+          else if (res.status === 401) showNotice("Enter the API key above and press Connect.");
+        }).catch(function () {
+          showNotice("The request timed out. Try again in a moment.");
+        }).finally(function () { b.disabled = false; refresh(); });
+      });
+    });
+  }
+
+  function wireOrderForm() {
+    var sideButtons = document.querySelectorAll("[data-side]");
+    Array.prototype.forEach.call(sideButtons, function (b) {
+      b.addEventListener("click", function () {
+        state.side = b.getAttribute("data-side");
+        Array.prototype.forEach.call(sideButtons, function (x) {
+          x.setAttribute("aria-pressed", String(x === b));
+        });
+      });
+    });
+
+    $("fType").addEventListener("change", function () {
+      var market = $("fType").value === "MARKET";
+      $("fPrice").disabled = market;
+    });
+
+    $("orderForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var msg = $("orderMsg");
+      var type = $("fType").value;
+      var body = {
+        clientOrderId: uuid(),
+        userId: Number($("fUser").value),
+        symbol: state.symbol,
+        side: state.side,
+        type: type,
+        quantity: Number($("fQty").value)
+      };
+      if (type === "LIMIT") {
+        if (!$("fPrice").value) { msg.className = "bad"; msg.textContent = "Enter a price for a limit order."; return; }
+        body.price = Number($("fPrice").value);
+      }
+      var btn = $("orderBtn");
+      btn.disabled = true; btn.textContent = "Sending";
+      msg.className = ""; msg.textContent = "";
+      api("/orders", { method: "POST", body: JSON.stringify(body) }).then(function (res) {
+        if (res.ok && res.data) {
+          var n = (res.data.trades || []).length;
+          msg.className = "ok";
+          msg.textContent = n > 0
+            ? "Order filled: " + n + (n === 1 ? " trade" : " trades") + " executed."
+            : "Order accepted and resting in the book.";
+        } else if (res.status === 401) {
+          msg.className = "bad"; msg.textContent = "The API key is missing or wrong.";
+        } else {
+          msg.className = "bad";
+          msg.textContent = (res.data && res.data.error) ? res.data.error : "The server rejected the order.";
+        }
+      }).catch(function () {
+        msg.className = "bad"; msg.textContent = "The request timed out. Check the book before sending again.";
+      }).finally(function () {
+        btn.disabled = false; btn.textContent = "Send order"; refresh();
+      });
+    });
+  }
+
+  function wireKey() {
+    $("apiKey").value = state.key;
+    $("keyForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      state.key = $("apiKey").value.trim();
+      safeSet("apiKey", state.key);
+      refresh();
+    });
+  }
+
+  renderTabs();
+  wireKey();
+  wireSimulator();
+  wireOrderForm();
+  refresh();
+  setInterval(refresh, 2500);
+})();
+</script>
+</body>
+</html>

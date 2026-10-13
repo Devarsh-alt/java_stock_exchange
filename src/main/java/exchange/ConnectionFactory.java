@@ -1,22 +1,29 @@
 package exchange;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * Factory for creating, testing, and initializing JDBC database connections.
+ * Factory for obtaining, testing, and initializing JDBC database connections.
+ *
+ * <p>Connections come from a HikariCP pool that is created lazily on first use, so
+ * constructing a factory never touches the network. Closing a connection returned by
+ * {@link #getConnection()} hands it back to the pool instead of closing the socket,
+ * which avoids a fresh TCP + TLS + MySQL handshake for every transaction.</p>
  *
  * <p>Supports:
  * <ul>
- *   <li>Direct transactional connection acquisition via {@link #getConnection()}</li>
+ *   <li>Pooled connection acquisition via {@link #getConnection()}</li>
  *   <li>Connection verification and ping via {@link #testConnection()}</li>
  *   <li>Schema initialization from classpath SQL script via {@link #initializeSchema(String)}</li>
  * </ul>
@@ -26,6 +33,7 @@ import java.util.stream.Collectors;
 public class ConnectionFactory {
 
     private final DatabaseConfig config;
+    private volatile HikariDataSource dataSource;
 
     public ConnectionFactory(DatabaseConfig config) {
         this.config = Objects.requireNonNull(config, "DatabaseConfig cannot be null");
@@ -42,14 +50,62 @@ public class ConnectionFactory {
     }
 
     /**
-     * Creates a new JDBC connection using the configured credentials.
+     * Borrows a connection from the pool. Closing it returns it to the pool.
      *
      * @return a live {@link Connection}
-     * @throws SQLException if connection cannot be established
+     * @throws SQLException if no connection can be obtained within the configured timeout
      */
     public Connection getConnection() throws SQLException {
-        DriverManager.setLoginTimeout(config.getConnectionTimeoutMs() / 1000);
-        return DriverManager.getConnection(config.getUrl(), config.getUser(), config.getPassword());
+        return pool().getConnection();
+    }
+
+    private HikariDataSource pool() {
+        HikariDataSource ds = dataSource;
+        if (ds == null) {
+            synchronized (this) {
+                ds = dataSource;
+                if (ds == null) {
+                    ds = createPool();
+                    dataSource = ds;
+                }
+            }
+        }
+        return ds;
+    }
+
+    private HikariDataSource createPool() {
+        HikariConfig hc = new HikariConfig();
+        hc.setPoolName("exchange-db-pool");
+        hc.setJdbcUrl(config.getUrl());
+        hc.setUsername(config.getUser());
+        hc.setPassword(config.getPassword());
+        hc.setDriverClassName("com.mysql.cj.jdbc.Driver");
+
+        hc.setMaximumPoolSize(config.getPoolSize());
+        hc.setMinimumIdle(Math.min(2, config.getPoolSize()));
+        // How long getConnection() waits for a free or new connection
+        hc.setConnectionTimeout(Math.max(250, config.getConnectionTimeoutMs()));
+        // Recycle before the server or a firewall silently drops long-lived sockets,
+        // and keep idle connections warm so requests never pay the handshake cost.
+        hc.setMaxLifetime(25 * 60_000L);
+        hc.setKeepaliveTime(5 * 60_000L);
+        // Do not throw at pool creation if the DB is briefly unreachable; fail in getConnection() instead.
+        hc.setInitializationFailTimeout(-1);
+
+        // Driver-level socket connect timeout (ms)
+        hc.addDataSourceProperty("connectTimeout", "10000");
+
+        HikariDataSource ds = new HikariDataSource(hc);
+        Runtime.getRuntime().addShutdownHook(new Thread(ds::close, "db-pool-shutdown"));
+        return ds;
+    }
+
+    /** Closes the pool, if it was ever created. Safe to call more than once. */
+    public synchronized void close() {
+        if (dataSource != null) {
+            dataSource.close();
+            dataSource = null;
+        }
     }
 
     /**
@@ -58,35 +114,12 @@ public class ConnectionFactory {
      * @return true if connection succeeds and ping returns valid within timeout
      */
     public boolean testConnection() {
-    try (Connection conn = getConnection()) {
-        return conn.isValid(config.getConnectionTimeoutMs() / 1000);
-    } catch (SQLException e) {
-        System.err.println("[DB-DIAGNOSTIC] Connection failed.");
-        SQLException current = e;
-
-        while (current != null) {
-            System.err.println(
-                "[DB-DIAGNOSTIC] Type=" + current.getClass().getSimpleName()
-                + ", SQLState=" + current.getSQLState()
-                + ", ErrorCode=" + current.getErrorCode()
-                + ", Message=" + current.getMessage()
-            );
-            current = current.getNextException();
+        try (Connection conn = getConnection()) {
+            return conn.isValid(Math.max(1, config.getConnectionTimeoutMs() / 1000));
+        } catch (SQLException e) {
+            return false;
         }
-
-        Throwable cause = e.getCause();
-        while (cause != null) {
-            System.err.println(
-                "[DB-DIAGNOSTIC] Cause="
-                + cause.getClass().getSimpleName()
-                + ": " + cause.getMessage()
-            );
-            cause = cause.getCause();
-        }
-
-        return false;
     }
-}
 
     /**
      * Executes a SQL schema script from the classpath (e.g. {@code /schema.sql}).
