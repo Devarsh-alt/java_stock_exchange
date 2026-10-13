@@ -24,7 +24,9 @@ public final class DatabaseConfig {
     private final int connectionTimeoutMs;
 
     public DatabaseConfig(String url, String user, String password) {
-        this(url, user, password, 10, 5000);
+        // 30s timeout: remote DBs (e.g. Aiven in another region) need more than 5s
+        // for TCP + TLS + MySQL handshake, especially on low-CPU free-tier hosts.
+        this(url, user, password, 10, 30000);
     }
 
     public DatabaseConfig(String url, String user, String password, int poolSize, int connectionTimeoutMs) {
@@ -33,8 +35,9 @@ public final class DatabaseConfig {
                     "Database URL is required. Please set the 'DB_URL' environment variable or provide a valid JDBC URL.");
         }
         if (!url.startsWith("jdbc:mysql:")) {
+            // Do not echo the URL: it may contain credentials (e.g. a raw mysql://user:pass@host URI).
             throw new IllegalArgumentException(
-                    "Database URL must start with 'jdbc:mysql:'. Provided: '" + url + "'");
+                    "Database URL must start with 'jdbc:mysql:'. Use the JDBC form and set DB_USER/DB_PASSWORD separately.");
         }
         if (user == null || user.isBlank()) {
             throw new IllegalArgumentException(
