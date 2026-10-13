@@ -1,0 +1,97 @@
+.root-pane {
+    -bg: #10161d; -surface: #171f28; -surface2: #1e2833; -line: #2a3643;
+    -ink: #e6ebf0; -muted: #93a0ad; -bid: #4fb3d1; -ask: #f09a62;
+    -ok: #57c28a; -warn: #e0b24a; -bad: #ff8a80;
+    -fx-background-color: -bg;
+    -fx-font-family: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-text-fill: -ink;
+}
+.label { -fx-text-fill: -ink; }
+.muted { -fx-text-fill: -muted; }
+.up { -fx-text-fill: -bid; }
+.down { -fx-text-fill: -ask; }
+
+.header { -fx-background-color: -surface; -fx-border-color: transparent transparent -line transparent; }
+.app-title { -fx-font-size: 22px; -fx-font-weight: bold; }
+.notice { -fx-background-color: -surface2; -fx-border-color: -warn; -fx-border-width: 0 0 0 3; -fx-padding: 8 12; }
+
+.pill { -fx-background-color: -surface2; -fx-border-color: -line; -fx-border-radius: 999; -fx-background-radius: 999; -fx-padding: 3 12; }
+.pill.ok { -fx-text-fill: -ok; -fx-border-color: -ok; }
+.pill.warn { -fx-text-fill: -warn; -fx-border-color: -warn; }
+.pill.bad { -fx-text-fill: -bad; -fx-border-color: -bad; }
+.pill.idle { -fx-text-fill: -muted; }
+
+.card { -fx-background-color: -surface; -fx-border-color: -line; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 14; }
+.card-title { -fx-font-size: 15px; -fx-font-weight: bold; }
+.value { -fx-font-weight: bold; }
+.kv { -fx-padding: 4 0; -fx-border-color: transparent transparent -line transparent; }
+.big-price { -fx-font-size: 44px; -fx-font-weight: bold; }
+
+/* inputs */
+.text-field, .password-field, .choice-box {
+    -fx-background-color: -bg; -fx-border-color: -line; -fx-border-radius: 6; -fx-background-radius: 6;
+    -fx-text-fill: -ink; -fx-prompt-text-fill: #5d6a77; -fx-padding: 6 10;
+}
+.text-field:focused, .password-field:focused { -fx-border-color: -bid; }
+.choice-box .label { -fx-text-fill: -ink; }
+.choice-box { -fx-padding: 3 6; }
+
+/* buttons */
+.button { -fx-background-color: -surface2; -fx-border-color: -line; -fx-border-radius: 6; -fx-background-radius: 6; -fx-text-fill: -ink; -fx-padding: 6 14; -fx-cursor: hand; }
+.button:hover { -fx-border-color: -muted; }
+.button:disabled { -fx-opacity: 0.5; }
+.button.primary { -fx-background-color: -bid; -fx-text-fill: #08222b; -fx-font-weight: bold; -fx-border-color: -bid; }
+.buy-btn { -fx-background-color: -bid; -fx-text-fill: #08222b; -fx-font-weight: bold; -fx-padding: 9 14; -fx-border-color: -bid; }
+.sell-btn { -fx-background-color: -ask; -fx-text-fill: #2b1405; -fx-font-weight: bold; -fx-padding: 9 14; -fx-border-color: -ask; }
+
+.toggle-button.tab { -fx-background-color: transparent; -fx-border-color: -line; -fx-border-radius: 6; -fx-background-radius: 6; -fx-text-fill: -ink; -fx-padding: 6 16; -fx-cursor: hand; }
+.toggle-button.tab:selected { -fx-background-color: -ink; -fx-text-fill: -surface; -fx-border-color: -ink; }
+.toggle-button.seg { -fx-background-color: transparent; -fx-border-color: -line; -fx-border-radius: 6; -fx-background-radius: 6; -fx-text-fill: -ink; -fx-padding: 8; -fx-cursor: hand; }
+.toggle-button.seg.buy:selected { -fx-background-color: -bid; -fx-text-fill: #08222b; -fx-border-color: -bid; -fx-font-weight: bold; }
+.toggle-button.seg.sell:selected { -fx-background-color: -ask; -fx-text-fill: #2b1405; -fx-border-color: -ask; -fx-font-weight: bold; }
+
+/* order book */
+.ladder-head { -fx-border-color: transparent transparent -line transparent; }
+.ladder-head-price, .ladder-head .label { -fx-text-fill: -muted; }
+.book-row { -fx-cursor: hand; }
+.book-row:hover { -fx-background-color: rgba(255,255,255,0.05); }
+.ask-price { -fx-text-fill: -ask; -fx-font-weight: bold; }
+.bid-price { -fx-text-fill: -bid; -fx-font-weight: bold; }
+.bar-ask { -fx-background-color: rgba(240,154,98,0.22); -fx-background-radius: 3; }
+.bar-bid { -fx-background-color: rgba(79,179,209,0.22); -fx-background-radius: 3; }
+.spread { -fx-text-fill: -muted; -fx-padding: 6 8; -fx-border-color: -line transparent -line transparent; -fx-border-style: dashed; -fx-alignment: CENTER; }
+
+.spark { -fx-stroke-width: 2; -fx-fill: transparent; }
+.spark-up { -fx-stroke: -bid; }
+.spark-down { -fx-stroke: -ask; }
+
+/* table */
+.table-view { -fx-background-color: transparent; -fx-control-inner-background: -surface; -fx-table-cell-border-color: transparent; -fx-border-color: -line; }
+.table-view .column-header-background { -fx-background-color: -surface2; }
+.table-view .column-header, .table-view .filler { -fx-background-color: -surface2; -fx-border-color: -line; -fx-border-width: 0 0 1 0; }
+.table-view .column-header .label { -fx-text-fill: -muted; -fx-font-weight: normal; }
+.table-row-cell { -fx-background-color: transparent; -fx-text-fill: -ink; }
+.table-row-cell:odd { -fx-background-color: rgba(255,255,255,0.025); }
+.table-cell { -fx-text-fill: -ink; }
+.table-cell.up { -fx-text-fill: -bid; }
+.table-cell.down { -fx-text-fill: -ask; }
+.placeholder .label { -fx-text-fill: -muted; }
+
+/* latency bars */
+.progress-bar > .track { -fx-background-color: -bg; -fx-background-radius: 4; -fx-background-insets: 0; }
+.progress-bar > .bar { -fx-background-color: -bid; -fx-background-radius: 4; -fx-background-insets: 0; -fx-padding: 4; }
+.progress-bar { -fx-pref-height: 8; }
+
+/* log + scroll */
+.log, .log .content { -fx-control-inner-background: -surface; -fx-text-fill: -muted; -fx-font-family: "Consolas", monospace; -fx-font-size: 12px; -fx-highlight-fill: #2a3643; }
+.log { -fx-background-color: -surface; -fx-border-color: -line; -fx-border-radius: 6; }
+.scroll-pane.flat-scroll, .scroll-pane.flat-scroll > .viewport { -fx-background-color: transparent; }
+.scroll-bar { -fx-background-color: transparent; }
+.scroll-bar .thumb { -fx-background-color: -line; -fx-background-radius: 4; }
+.scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-padding: 0; }
+
+/* dropdown popups live in their own window, so use literal colors */
+.context-menu { -fx-background-color: #1e2833; -fx-border-color: #2a3643; }
+.context-menu .label { -fx-text-fill: #e6ebf0; }
+.menu-item:focused { -fx-background-color: #2a3643; }

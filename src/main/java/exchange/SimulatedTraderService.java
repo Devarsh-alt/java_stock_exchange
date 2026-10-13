@@ -150,7 +150,11 @@ public class SimulatedTraderService {
                 executedVolume.addAndGet(vol);
             }
         } catch (Exception e) {
-            errorsCount.incrementAndGet();
+            long n = errorsCount.incrementAndGet();
+            // Surface why orders are rejected: first 20 errors, then every 200th
+            if (n <= 20 || n % 200 == 0) {
+                System.err.println("[Simulator] order rejected (#" + n + "): " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            }
         }
     }
 

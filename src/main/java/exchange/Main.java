@@ -98,7 +98,7 @@ public class Main {
         if ("true".equalsIgnoreCase(simEnabled) || "1".equals(simEnabled)) {
             System.out.println("[Main] SIMULATOR_ENABLED=true. Starting automated market simulation...");
             SimulatedTraderService.SimulationConfig simConfig = new SimulatedTraderService.SimulationConfig(
-                    List.of("RELIANCE.NS", "TCS.NS"),
+                    List.of("RELIANCE.NS", "TCS.NS", "INFOSYS.NS"),
                     4,
                     5,
                     0.5,
