@@ -117,4 +117,23 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Desktop terminal:  mvn -Pui javafx:run   (not used by the Render/Docker build) -->
+    <profile>
+      <id>ui</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-maven-plugin</artifactId>
+            <version>0.0.8</version>
+            <configuration>
+              <mainClass>exchange.client.StockExchangeApp</mainClass>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
