@@ -158,6 +158,30 @@ public class JdbcOrderRepository {
         }
     }
 
+    /** Finds active simulator orders old enough to expire, across all symbols. */
+    public List<OrderRecord> findActiveSimulatorOrdersBefore(Connection conn,
+                                                              long firstUserId,
+                                                              long endUserIdExclusive,
+                                                              Instant cutoff) throws SQLException {
+        Objects.requireNonNull(conn, "Connection cannot be null");
+        Objects.requireNonNull(cutoff, "Cutoff cannot be null");
+        String sql = "SELECT id, client_order_id, user_id, symbol, side, type, price, reserved_price, "
+                + "original_qty, remaining_qty, filled_qty, arrival_seq, status, created_at "
+                + "FROM orders WHERE user_id >= ? AND user_id < ? AND client_order_id LIKE 'sim-%' "
+                + "AND status IN ('OPEN', 'PARTIALLY_FILLED') AND created_at <= ? "
+                + "ORDER BY created_at ASC";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, firstUserId);
+            stmt.setLong(2, endUserIdExclusive);
+            stmt.setTimestamp(3, Timestamp.from(cutoff));
+            try (ResultSet rs = stmt.executeQuery()) {
+                List<OrderRecord> list = new ArrayList<>();
+                while (rs.next()) list.add(mapOrderRecord(rs));
+                return list;
+            }
+        }
+    }
+
     private OrderRecord mapOrderRecord(ResultSet rs) throws SQLException {
         return new OrderRecord(
                 rs.getString("id"),

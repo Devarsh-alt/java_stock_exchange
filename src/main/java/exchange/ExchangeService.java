@@ -487,6 +487,31 @@ public class ExchangeService {
         }
     }
 
+    /**
+     * Cancels simulator-generated orders older than the supplied cutoff. The candidate
+     * list is read from persistence, then each cancellation goes through the normal
+     * per-symbol lock and transactional reservation-release path.
+     */
+    public int expireSimulatorOrdersBefore(java.time.Instant cutoff,
+                                           long firstUserId,
+                                           int traderCount) {
+        if (!isDatabaseBacked() || traderCount <= 0) return 0;
+        final List<JdbcOrderRepository.OrderRecord> candidates;
+        try {
+            candidates = txManager.executeInTransaction(conn ->
+                    jdbcOrderRepo.findActiveSimulatorOrdersBefore(
+                            conn, firstUserId, firstUserId + traderCount, cutoff));
+        } catch (SQLException e) {
+            throw new ExchangeException("Failed to find expired simulator orders: " + e.getMessage(), e);
+        }
+
+        int cancelled = 0;
+        for (JdbcOrderRepository.OrderRecord candidate : candidates) {
+            if (cancelOrder(candidate.symbol(), candidate.id())) cancelled++;
+        }
+        return cancelled;
+    }
+
     // ── Snapshot ──────────────────────────────────────────────────────────────
 
     public OrderBookSnapshot getSnapshot(String symbol) {

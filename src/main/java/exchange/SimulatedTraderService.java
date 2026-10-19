@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 import java.util.UUID;
+import java.time.Instant;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -81,6 +82,22 @@ public class SimulatedTraderService {
 
             long periodMicros = Math.max(1000L, 1_000_000L / config.orderRatePerSec());
             scheduler.scheduleAtFixedRate(this::submitRandomOrder, 0, periodMicros, TimeUnit.MICROSECONDS);
+            // Keep unmatched simulator orders from reserving the demo accounts' cash
+            // indefinitely. Thirty seconds is long enough to match normally, but caps
+            // the amount of capital tied up by stale limit orders.
+            scheduler.scheduleAtFixedRate(() -> {
+                if (!running.get()) return;
+                try {
+                    int expired = exchangeService.expireSimulatorOrdersBefore(
+                            Instant.now().minusSeconds(30), 900001L, config.traderCount());
+                    if (expired > 0) {
+                        System.out.println("[Simulator] Expired " + expired + " stale simulator orders.");
+                    }
+                } catch (Exception e) {
+                    // Do not allow one cleanup failure to suppress all future cleanup runs.
+                    System.err.println("[Simulator] Order-expiry sweep failed: " + e.getMessage());
+                }
+            }, 5, 5, TimeUnit.SECONDS);
         }
     }
 

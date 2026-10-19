@@ -19,6 +19,7 @@ import java.util.List;
  * </ul>
  */
 public class Main {
+    private static final List<String> SYMBOLS = List.of("RELIANCE.BO", "TCS.BO", "HDFCBANK.BO", "ICICIBANK.BO", "INFY.BO", "ITC.BO", "LT.BO", "SBIN.BO", "BHARTIARTL.BO", "TATAMOTORS.BO", "M&M.BO", "HINDUNILVR.BO", "WIPRO.BO", "TATASTEEL.BO", "AXISBANK.BO");
 
     public static void main(String[] args) {
         System.out.println("==================================================");
@@ -30,6 +31,8 @@ public class Main {
 
         ExchangeService exchangeService;
         ConnectionFactory connectionFactory = null;
+        String simEnabled = System.getenv("SIMULATOR_ENABLED");
+        boolean simulatorEnabled = "true".equalsIgnoreCase(simEnabled) || "1".equals(simEnabled);
 
         // 1. Try to initialize Database components if environment is configured
         String dbUrl = System.getenv("DB_URL");
@@ -64,8 +67,15 @@ public class Main {
                     engine, accountService, txManager, jdbcAccountRepo, jdbcOrderRepo, jdbcTradeRepo, idempRepo
             );
 
-            System.out.println("[Main] Recovering active state for RELIANCE.NS, TCS.NS, INFOSYS.NS...");
-            for (String symbol : List.of("RELIANCE.NS", "TCS.NS", "INFOSYS.NS")) {
+            if (simulatorEnabled) {
+                // The simulator uses dedicated account IDs. Cancel their prior-run
+                // simulation orders before recovery so legacy .NS orders cannot leave
+                // demo cash/shares reserved while only .BO books are loaded.
+                SimulatorSeeder.cancelOutstandingSimulatorOrders(connectionFactory, 900001L, 4);
+            }
+
+            System.out.println("[Main] Recovering active state for configured symbols...");
+            for (String symbol : SYMBOLS) {
                 try {
                     exchangeService.recoverSymbolFromDatabase(symbol);
                 } catch (Exception recEx) {
@@ -85,20 +95,13 @@ public class Main {
 
         // 2. Pre-seed default demo accounts in memory if not already present
         Account demo1 = accountService.getOrCreateAccount(1001L, new BigDecimal("1000000.00"));
-        demo1.depositShares("RELIANCE.NS", 5000L);
-        demo1.depositShares("TCS.NS", 2000L);
-
         Account demo2 = accountService.getOrCreateAccount(1002L, new BigDecimal("1000000.00"));
-        demo2.depositShares("RELIANCE.NS", 5000L);
-        demo2.depositShares("TCS.NS", 2000L);
-
         // 3. Optional simulated trader background service
         SimulatedTraderService simService = null;
-        String simEnabled = System.getenv("SIMULATOR_ENABLED");
-        if ("true".equalsIgnoreCase(simEnabled) || "1".equals(simEnabled)) {
+        if (simulatorEnabled) {
             System.out.println("[Main] SIMULATOR_ENABLED=true. Starting automated market simulation...");
             SimulatedTraderService.SimulationConfig simConfig = new SimulatedTraderService.SimulationConfig(
-                    List.of("RELIANCE.NS", "TCS.NS", "INFOSYS.NS"),
+                    SYMBOLS,
                     4,
                     5,
                     0.5,
